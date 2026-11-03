@@ -155,6 +155,17 @@ MySocket *dequeue_connection() {
   return client;
 }
 
+void *worker_thread(void *unused) {
+  (void) unused; // get rid of unused warning
+
+  while (true) {
+    MySocket *client = dequeue_connection();
+    handle_request(client);
+  }
+
+  return NULL;
+}
+
 int main(int argc, char *argv[]) {
 
   signal(SIGPIPE, SIG_IGN);
