@@ -210,11 +210,27 @@ int main(int argc, char *argv[]) {
   // The order that you push services dictates the search order
   // for path prefix matching
   services.push_back(new FileService(BASEDIR));
+
+  // make worker thread pool once during startup:
+  for (int i = 0; i < THREAD_POOL_SIZE; i++) {
+    pthread_t worker;
+
+    if (dthread_create(&worker, NULL, worker_thread, NULL) != 0) {
+      cerr << "failed to create worker thread" << endl;
+      exit(1);
+    }
+
+    if (dthread_detach(worker) != 0) {
+      cerr << "failed to detach worker thread" << endl;
+      exit(1);
+    }
+  }
   
   while(true) {
     sync_print("waiting_to_accept", "");
     client = server->accept();
     sync_print("client_accepted", "");
-    handle_request(client);
+    //handle_request(client);
+    enqueue_connection(client);
   }
 }
