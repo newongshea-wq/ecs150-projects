@@ -10,6 +10,8 @@
 #include <vector>
 #include <sstream>
 #include <deque>
+#include <cerrno>
+#include <climits>
 
 #include "HTTPRequest.h"
 #include "HTTPResponse.h"
@@ -30,6 +32,21 @@ string SCHEDALG = "FIFO";
 string LOGFILE = "/dev/null";
 
 vector<HttpService *> services;
+
+// simple validation of command line arguments for reuse later
+int parse_positive_argument(const char *value, const char *name) {
+  char *end = NULL;
+  errno = 0;
+
+  long parsed = strtol(value, &end, 10);
+
+  if (errno != 0 || end == value || *end != '\0' || parsed <= 0 || parsed > INT_MAX) {
+    cerr << "invalid " << name << ": " << value << endl;
+    exit(1);
+  }
+  return static_cast<int>(parsed);
+}
+
 
 HttpService *find_service(HTTPRequest *request) {
    // find a service that is registered for this path prefix
@@ -115,13 +132,13 @@ int main(int argc, char *argv[]) {
       BASEDIR = string(optarg);
       break;
     case 'p':
-      PORT = atoi(optarg);
+      PORT = parse_positive_argument(optarg, "port");
       break;
     case 't':
-      THREAD_POOL_SIZE = atoi(optarg);
+      THREAD_POOL_SIZE = parse_positive_argument(optarg, "threads");
       break;
     case 'b':
-      BUFFER_SIZE = atoi(optarg);
+      BUFFER_SIZE = parse_positive_argument(optarg, "buffers");
       break;
     case 's':
       SCHEDALG = string(optarg);
@@ -135,6 +152,10 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  if (PORT > 65535) { // since max port number is 65535
+    cerr << "invalid port" << endl;
+    exit(1);
+  }
   set_log_file(LOGFILE);
 
   sync_print("init", "");
