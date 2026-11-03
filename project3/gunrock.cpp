@@ -32,6 +32,12 @@ string SCHEDALG = "FIFO";
 string LOGFILE = "/dev/null";
 
 vector<HttpService *> services;
+deque<MySocket *> request_queue; // shared queue of accepted client connects
+
+pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER; // protect access to shared queues
+pthread_cond_t queue_not_empty = PTHREAD_COND_INITIALIZER; // signal for when queue not empty
+pthread_cond_t queue_not_full = PTHREAD_COND_INITIALIZER; // main thread will wait on this if queue is full
+
 
 // simple validation of command line arguments for reuse later
 int parse_positive_argument(const char *value, const char *name) {
@@ -119,6 +125,34 @@ void handle_request(MySocket *client) {
   sync_print("close_connection", payload.str());
   client->close();
   delete client;
+}
+
+void enqueue_connection(MySocket *client) {
+  dthread_mutex_lock(&queue_mutex); // ack mutex
+
+  // wait if queue full
+  while (request_queue.size() >= static_cast<size_t>(BUFFER_SIZE)) {
+    dthread_cond_wait(&queue_not_full, &queue_mutex);
+  }
+  request_queue.push_back(client); // append connection to queue
+  // notify a worker thread and release lock
+  dthread_cond_signal(&queue_not_empty);
+  dthread_mutex_unlock(&queue_mutex);
+}
+
+// waits if nothing to process, then remove oldest connection from front of queue
+MySocket *dequeue_connection() {
+  dthread_mutex_lock(&queue_mutex);
+
+  while (request_queue.empty()) {
+    dthread_cond_wait(&queue_not_empty, &queue_mutex);
+  }
+  MySocket *client = request_queue.front();
+  request_queue.pop_front();
+  dthread_cond_signal(&queue_not_full);
+  dthread_mutex_unlock(&queue_mutex);
+
+  return client;
 }
 
 int main(int argc, char *argv[]) {
